@@ -25,10 +25,11 @@ import SummaryNavigation from './SummaryNavigation';
 import ItineraryLine from '../component/map/ItineraryLine';
 import LocationMarker from '../component/map/LocationMarker';
 import MobileItineraryWrapper from './MobileItineraryWrapper';
-import { otpToLocation } from '../util/otpStrings';
 import Loading from './Loading';
 import { getHomeUrl } from '../util/path';
+import { getIntermediatePlaces } from '../util/queryUtils';
 import withBreakpoint from '../util/withBreakpoint';
+import { validateServiceTimeRange } from '../util/timeUtils';
 
 export const ITINERARYFILTERING_DEFAULT = 2.0;
 
@@ -64,6 +65,10 @@ class SummaryPage extends React.Component {
         itineraries: PropTypes.array,
       }).isRequired,
     }).isRequired,
+    serviceTimeRange: PropTypes.shape({
+      start: PropTypes.number.isRequired,
+      end: PropTypes.number.isRequired,
+    }).isRequired,
     content: PropTypes.node,
     map: PropTypes.shape({
       type: PropTypes.func.isRequired,
@@ -87,6 +92,7 @@ class SummaryPage extends React.Component {
     walkSpeed: 1.2,
     wheelchair: false,
     accessibilityOption: 0,
+    ticketTypes: null,
   };
 
   constructor(props, context) {
@@ -201,29 +207,16 @@ class SummaryPage extends React.Component {
       );
     }
 
-    if (query && query.intermediatePlaces) {
-      if (Array.isArray(query.intermediatePlaces)) {
-        query.intermediatePlaces.map(otpToLocation).forEach((location, i) => {
-          leafletObjs.push(
-            <LocationMarker
-              key={`via_${i}`}
-              position={location}
-              className="via"
-              noText
-            />,
-          );
-        });
-      } else {
-        leafletObjs.push(
-          <LocationMarker
-            key="via"
-            position={otpToLocation(query.intermediatePlaces)}
-            className="via"
-            noText
-          />,
-        );
-      }
-    }
+    getIntermediatePlaces(query).forEach((location, i) => {
+      leafletObjs.push(
+        <LocationMarker
+          key={`via_${i}`}
+          position={location}
+          className="via"
+          noText
+        />,
+      );
+    });
 
     // Decode all legs of all itineraries into latlong arrays,
     // and concatenate into one big latlong array
@@ -246,27 +239,6 @@ class SummaryPage extends React.Component {
       />
     );
   }
-
-  renderSummaryPlanContainer = ({ done, props }) =>
-    done ? (
-      <SummaryPlanContainer
-        plan={this.props.plan.plan}
-        itineraries={this.props.plan.plan.itineraries}
-        params={this.props.params}
-        error={props.error}
-        setLoading={this.setLoading}
-        setError={this.setError}
-      >
-        {this.context.breakpoint === 'large' &&
-          this.props.content &&
-          React.cloneElement(this.props.content, {
-            itinerary: this.props.plan.plan.itineraries[this.props.params.hash],
-            focus: this.updateCenter,
-          })}
-      </SummaryPlanContainer>
-    ) : (
-      undefined
-    );
 
   render() {
     const {
@@ -317,6 +289,9 @@ class SummaryPage extends React.Component {
       );
     }
 
+    const serviceTimeRange = validateServiceTimeRange(
+      this.props.serviceTimeRange,
+    );
     const hasDefaultPreferences = this.hasDefaultPreferences();
     if (this.props.breakpoint === 'large') {
       let content;
@@ -324,6 +299,7 @@ class SummaryPage extends React.Component {
         content = (
           <SummaryPlanContainer
             plan={this.props.plan.plan}
+            serviceTimeRange={serviceTimeRange}
             itineraries={this.props.plan.plan.itineraries}
             params={this.props.params}
             error={error}
@@ -359,6 +335,7 @@ class SummaryPage extends React.Component {
           header={
             <SummaryNavigation
               params={this.props.params}
+              serviceTimeRange={serviceTimeRange}
               hasDefaultPreferences={hasDefaultPreferences}
               startTime={earliestStartTime}
               endTime={latestArrivalTime}
@@ -401,6 +378,7 @@ class SummaryPage extends React.Component {
       content = (
         <SummaryPlanContainer
           plan={this.props.plan.plan}
+          serviceTimeRange={serviceTimeRange}
           itineraries={this.props.plan.plan.itineraries}
           params={this.props.params}
           error={error}
@@ -417,6 +395,7 @@ class SummaryPage extends React.Component {
             <SummaryNavigation
               hasDefaultPreferences={hasDefaultPreferences}
               params={this.props.params}
+              serviceTimeRange={serviceTimeRange}
               startTime={earliestStartTime}
               endTime={latestArrivalTime}
               isQuickSettingsOpen={this.state.isQuickSettingsOpen}
@@ -476,6 +455,12 @@ export default Relay.createContainer(withBreakpoint(SummaryPage), {
             }
           }
         }
+      }
+    `,
+    serviceTimeRange: () => Relay.QL`
+      fragment on serviceTimeRange {
+        start
+        end
       }
     `,
   },
